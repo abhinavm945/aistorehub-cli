@@ -1,0 +1,21 @@
+# Virtual environments
+.test_venv/
+venv/
+env/
+.venv/
+
+# Build and distribution
+build/
+dist/
+*.egg-info/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
