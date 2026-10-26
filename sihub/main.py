@@ -380,15 +380,23 @@ def mcp(
         return
 
     # Handle removal: aihub mcp remove <name> / aihub mcp uninstall <name> / aihub mcp <name> --remove
-    is_removal = remove or target in ("remove", "rm", "uninstall", "delete")
-    actual_target = sub_target if target in ("remove", "rm", "uninstall", "delete") and sub_target else target
-
-    # Handle explicit install sub-command: aihub mcp install <target>
-    if target in ("install", "add") and sub_target:
+    if target in ("remove", "rm", "uninstall", "delete"):
+        is_removal = True
         actual_target = sub_target
+        if not actual_target:
+            click.secho("Error: Missing target server name to remove.", fg="red", bold=True)
+            click.echo("Usage: aihub mcp remove <server_name>")
+            click.echo("Example: aihub mcp remove stitch-skills")
+            return
+    elif target in ("install", "add") and sub_target:
+        is_removal = False
+        actual_target = sub_target
+    else:
+        is_removal = remove
+        actual_target = target
 
     if not actual_target:
-        click.secho("Error: Missing target server name. Example: aihub mcp remove stitch-skills", fg="red")
+        click.secho("Error: Missing target server name. Example: aihub mcp install community/stitch-skills", fg="red")
         return
 
     parts = actual_target.strip("/").split("/")
