@@ -22,7 +22,7 @@ from .packager import inspect_directory, create_bundle_zip
 
 
 @click.group()
-@click.version_option("0.1.6", prog_name="aistorehub")
+@click.version_option("0.1.7", prog_name="aistorehub")
 @click.option("--no-telemetry", is_flag=True, default=False, help="Disable anonymous usage telemetry for this command invocation")
 def cli(no_telemetry: bool = False):
     """
@@ -681,6 +681,139 @@ def clone(target: str, dest: str, extract: bool, no_telemetry: bool = False):
     Example: aistorehub clone community/catalog/brave-search-mcp
     """
     _do_pull_or_clone(target, dest, extract, no_telemetry, action_label="Cloning")
+
+
+@cli.command()
+@click.argument("target")
+@click.option("--dest", default=None, help="Working directory (defaults to system slug)")
+@click.option("--input", "user_input", default=None, help="Input prompt or task description to pass to the system")
+@click.option("--no-telemetry", is_flag=True, default=False, help="Disable anonymous usage telemetry for this command")
+def run(target: str, dest: str, user_input: Optional[str] = None, no_telemetry: bool = False):
+    """
+    Execute or run an AI system locally.
+
+    For Agents & Bots: Pulls codebase if not present and launches entrypoint (main.py, agent.py, npm start).
+    For Prompts & Skills: Executes instructions with provided input or displays runtime directives.
+    For MCP Servers: Starts in stdio mode or outputs Claude/Cursor configuration command.
+
+    Example:
+      aihub run community/astrbot
+      aihub run community/stitch-skills --input "Build an obsidian dark theme navbar"
+    """
+    import subprocess
+    import shutil
+
+    parts = target.strip("/").split("/")
+    if len(parts) >= 3:
+        owner = parts[0]
+        repo = parts[1]
+        system_slug = parts[2]
+    elif len(parts) == 2:
+        owner = parts[0]
+        repo = None
+        system_slug = parts[1]
+    else:
+        owner = "community"
+        repo = None
+        system_slug = parts[0]
+
+    out_dir = Path(dest) if dest else Path.cwd() / system_slug
+
+    # 1. Ensure system is pulled locally
+    if not out_dir.exists() or not (out_dir / "aistorehub.json").exists():
+        click.secho(f"System '{owner}/{system_slug}' not found locally in {out_dir.name}/. Pulling bundle first...", fg="cyan")
+        _do_pull_or_clone(target, str(out_dir), extract=True, no_telemetry=no_telemetry, action_label="Pulling")
+
+    # 2. Inspect manifest & instructions
+    manifest_file = out_dir / "aistorehub.json"
+    manifest = {}
+    if manifest_file.exists():
+        try:
+            import json
+            manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    sys_type = manifest.get("type", "agent")
+    sys_name = manifest.get("name", system_slug)
+
+    click.echo(f"\n==============================================================================")
+    click.secho(f"🚀 Executing {sys_name} ({sys_type})", bold=True, fg="green")
+    click.echo(f"   Directory: {out_dir.resolve()}")
+    click.echo(f"==============================================================================\n")
+
+    # Case A: Prompts, Skills, and Templates
+    if sys_type in ("prompt", "skill", "template"):
+        instructions_file = out_dir / "instructions.txt"
+        instructions = instructions_file.read_text(encoding="utf-8") if instructions_file.exists() else ""
+
+        if user_input:
+            click.secho("--- Executing with Prompt Directives ---", fg="cyan", bold=True)
+            click.echo(f"Input Task: {user_input}\n")
+            click.echo("--- System Instructions ---")
+            click.echo(instructions)
+            click.secho("\n✓ Directives compiled successfully. Pipe into your LLM runtime or copy above.", fg="green")
+        else:
+            click.secho("--- System Instructions & Directives ---", fg="cyan", bold=True)
+            click.echo(instructions)
+            click.echo("\nTip: Pass task input using --input:")
+            click.secho(f"  aihub run {owner}/{system_slug} --input \"Your query here\"", fg="yellow")
+        return
+
+    # Case B: Model Context Protocol (MCP) Server
+    if sys_type == "mcp_server":
+        click.secho("• Model Context Protocol (MCP) Server detected:", bold=True)
+        click.echo("  To configure into Cursor, Claude Desktop, or Windsurf:")
+        click.secho(f"  aihub mcp {owner}/{system_slug}", fg="cyan", bold=True)
+
+        entry_points = ["index.js", "index.mjs", "server.py", "main.py", "index.ts"]
+        for ep in entry_points:
+            ep_file = out_dir / ep
+            if ep_file.exists():
+                click.echo(f"\n  To run in stdio mode locally:")
+                if ep.endswith(".py"):
+                    click.secho(f"  cd {out_dir.name} && python {ep}", fg="green")
+                else:
+                    click.secho(f"  cd {out_dir.name} && node {ep}", fg="green")
+                break
+        return
+
+    # Case C: Autonomous Agents, Bots, and Applications
+    py_candidates = ["main.py", "agent.py", "run.py", "bot.py", "app.py", "cli.py"]
+    for candidate in py_candidates:
+        candidate_file = out_dir / candidate
+        if candidate_file.exists():
+            click.secho(f"• Launching Python entry point: {candidate}", fg="cyan", bold=True)
+            if (out_dir / "requirements.txt").exists():
+                click.echo(f"  Dependencies available in: {candidate_file.parent / 'requirements.txt'}")
+            cmd = [sys.executable, str(candidate_file.name)]
+            if user_input:
+                cmd.extend(["--input", user_input])
+            try:
+                subprocess.run(cmd, cwd=str(out_dir))
+            except KeyboardInterrupt:
+                click.echo("\nExecution stopped by user.")
+            except Exception as e:
+                click.secho(f"Execution error: {e}", fg="red")
+            return
+
+    # Look for Node / JS entry points
+    if (out_dir / "package.json").exists():
+        click.secho("• Launching Node.js project...", fg="cyan", bold=True)
+        npm_bin = shutil.which("npm") or "npm"
+        try:
+            subprocess.run([npm_bin, "start"], cwd=str(out_dir))
+        except KeyboardInterrupt:
+            click.echo("\nExecution stopped by user.")
+        except Exception as e:
+            click.secho(f"Execution error: {e}", fg="red")
+        return
+
+    # Fallback
+    click.secho(f"• All project files ready in {out_dir.name}/", bold=True)
+    if (out_dir / "README.md").exists():
+        click.echo("  Inspect README.md for execution instructions.")
+    click.echo(f"  cd {out_dir.name}")
 
 
 @cli.command()
