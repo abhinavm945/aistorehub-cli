@@ -17,12 +17,12 @@ if hasattr(sys.stderr, "reconfigure"):
 
 from .config import get_config, set_token, clear_auth, get_token, DEFAULT_API_URL
 from .client import APIClient
-from .mcp import inject_mcp_config
+from .mcp import inject_mcp_config, list_mcp_servers, remove_mcp_config
 from .packager import inspect_directory, create_bundle_zip
 
 
 @click.group()
-@click.version_option("0.1.7", prog_name="aistorehub")
+@click.version_option("0.1.8", prog_name="aistorehub")
 @click.option("--no-telemetry", is_flag=True, default=False, help="Disable anonymous usage telemetry for this command invocation")
 def cli(no_telemetry: bool = False):
     """
@@ -311,24 +311,107 @@ def search(query: str, limit: int):
         sys.exit(1)
 
 
-@cli.command()
-@click.argument("target")
+def _display_mcp_list(target_client: str = "all"):
+    clients = list_mcp_servers(target_client=target_client)
+    if not clients:
+        click.secho("No active MCP servers found in detected AI clients.", fg="yellow")
+        click.echo("To configure one, run: aihub mcp install <owner>/<system>")
+        return
+
+    click.echo("\n" + "=" * 76)
+    click.secho("Active MCP Servers Configured Across AI Clients", fg="bright_white", bold=True)
+    click.echo("=" * 76)
+
+    total_servers = 0
+    for client_name, info in clients.items():
+        path = info["path"]
+        servers = info["servers"]
+        total_servers += len(servers)
+        click.secho(f"\n● {client_name}", fg="cyan", bold=True)
+        click.echo(f"  Config: {path}")
+        for sname, scfg in servers.items():
+            transport = scfg.get("transport") or ("command" if "command" in scfg else "sse")
+            url_or_cmd = scfg.get("url") or (f"{scfg.get('command')} {' '.join(scfg.get('args', []))}") or "Custom"
+            click.secho(f"  ✔ {sname}", fg="green", bold=True, nl=False)
+            click.echo(f" [{transport}] -> {url_or_cmd}")
+
+    click.echo("\n" + "=" * 76)
+    click.echo(f"Total: {total_servers} active server configuration(s)")
+    click.echo("To remove a server: aihub mcp remove <server_name>\n")
+
+
+@cli.command(name="list")
 @click.option("--client", "target_client", default="all", type=click.Choice(["all", "claude", "cursor", "windsurf"]), help="Target AI client")
-@click.option("--no-telemetry", is_flag=True, default=False, help="Disable anonymous usage telemetry for this command")
-def mcp(target: str, target_client: str, no_telemetry: bool = False):
+def list_cmd(target_client: str = "all"):
     """
-    Auto-configure an MCP server into Claude Desktop, Cursor, or Windsurf.
-    Example: aistorehub mcp abhinav/sql-optimizer
+    List all active MCP servers configured across Cursor, Claude Desktop, and Windsurf.
+    Example: aihub list
+    """
+    _display_mcp_list(target_client=target_client)
+
+
+@cli.command()
+@click.argument("target", required=False)
+@click.argument("sub_target", required=False)
+@click.option("--client", "target_client", default="all", type=click.Choice(["all", "claude", "cursor", "windsurf"]), help="Target AI client")
+@click.option("--remove", "-r", is_flag=True, default=False, help="Remove the specified MCP server from client configuration")
+@click.option("--no-telemetry", is_flag=True, default=False, help="Disable anonymous usage telemetry for this command")
+def mcp(
+    target: Optional[str] = None,
+    sub_target: Optional[str] = None,
+    target_client: str = "all",
+    remove: bool = False,
+    no_telemetry: bool = False,
+):
+    """
+    Auto-configure, list, or remove MCP servers in Claude Desktop, Cursor, or Windsurf.
+    Examples:
+      aihub mcp install community/stitch-skills
+      aihub mcp list
+      aihub mcp remove stitch-skills
     """
     if no_telemetry:
         import os
         os.environ["DO_NOT_TRACK"] = "1"
 
-    # Parse target
-    parts = target.strip("/").split("/")
+    # Handle sub-command style: aihub mcp list / aihub mcp ls
+    if not target or target in ("list", "ls"):
+        _display_mcp_list(target_client=target_client)
+        return
+
+    # Handle removal: aihub mcp remove <name> / aihub mcp uninstall <name> / aihub mcp <name> --remove
+    is_removal = remove or target in ("remove", "rm", "uninstall", "delete")
+    actual_target = sub_target if target in ("remove", "rm", "uninstall", "delete") and sub_target else target
+
+    # Handle explicit install sub-command: aihub mcp install <target>
+    if target in ("install", "add") and sub_target:
+        actual_target = sub_target
+
+    if not actual_target:
+        click.secho("Error: Missing target server name. Example: aihub mcp remove stitch-skills", fg="red")
+        return
+
+    parts = actual_target.strip("/").split("/")
     owner = parts[0] if len(parts) > 1 else "public"
     system_slug = parts[-1]
 
+    if is_removal:
+        click.echo(f"Removing MCP server '{system_slug}' from detected clients...")
+        results = remove_mcp_config(system_slug, target_client=target_client)
+        if not results:
+            click.secho(f"No configured server matching '{system_slug}' found in client configs.", fg="yellow")
+            return
+        click.echo("")
+        for client_name, path, ok in results:
+            if ok:
+                click.secho(f"✓ Removed from {client_name}", fg="green", bold=True)
+                click.echo(f"  Location: {path}")
+            else:
+                click.secho(f"✗ Failed to update {client_name} at {path}", fg="red")
+        click.secho("\nRestart your AI client to apply changes.", fg="bright_white", bold=True)
+        return
+
+    # Install / Inject
     api = APIClient()
     click.echo(f"Fetching MCP configuration for {owner}/{system_slug}...")
 

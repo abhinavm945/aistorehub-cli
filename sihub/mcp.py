@@ -133,3 +133,119 @@ def inject_mcp_config(
             pass
 
     return results
+
+
+def list_mcp_servers(target_client: str = "all") -> Dict[str, Dict[str, Any]]:
+    """
+    Scans and reads configured MCP servers from all detected AI clients.
+    Returns: { client_name: { "path": Path, "servers": { server_name: config } } }
+    """
+    clients: Dict[str, Dict[str, Any]] = {}
+
+    # 1. Claude Desktop
+    if target_client in ("all", "claude"):
+        claude_path = get_claude_config_path()
+        if claude_path.exists():
+            try:
+                with open(claude_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                servers = data.get("mcpServers", {})
+                if isinstance(servers, dict) and servers:
+                    clients["Claude Desktop"] = {"path": claude_path, "servers": servers}
+            except Exception:
+                pass
+
+    # 2. Cursor IDE
+    if target_client in ("all", "cursor"):
+        for cursor_path in get_cursor_config_paths():
+            if cursor_path.exists():
+                try:
+                    with open(cursor_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    servers = data.get("mcpServers", {})
+                    if isinstance(servers, dict) and servers:
+                        loc = (
+                            "Cursor IDE (Local)"
+                            if cursor_path.parent == Path.cwd() / ".cursor"
+                            else "Cursor IDE (Global)"
+                        )
+                        clients[loc] = {"path": cursor_path, "servers": servers}
+                except Exception:
+                    continue
+
+    # 3. Windsurf
+    if target_client in ("all", "windsurf"):
+        windsurf_path = get_windsurf_config_path()
+        if windsurf_path.exists():
+            try:
+                with open(windsurf_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                servers = data.get("mcpServers", {})
+                if isinstance(servers, dict) and servers:
+                    clients["Windsurf"] = {"path": windsurf_path, "servers": servers}
+            except Exception:
+                pass
+
+    return clients
+
+
+def remove_mcp_config(
+    server_name: str,
+    target_client: str = "all",
+) -> List[Tuple[str, Path, bool]]:
+    """
+    Removes server_name from detected AI clients.
+    Creates timestamped .bak backups before editing.
+    Returns list of (client_name, path, success).
+    """
+    results: List[Tuple[str, Path, bool]] = []
+
+    # 1. Claude Desktop
+    if target_client in ("all", "claude"):
+        claude_path = get_claude_config_path()
+        if claude_path.exists():
+            try:
+                with open(claude_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if "mcpServers" in data and server_name in data["mcpServers"]:
+                    shutil.copy2(claude_path, str(claude_path) + ".bak")
+                    del data["mcpServers"][server_name]
+                    with open(claude_path, "w", encoding="utf-8") as f:
+                        json.dump(data, f, indent=2)
+                    results.append(("Claude Desktop", claude_path, True))
+            except Exception:
+                results.append(("Claude Desktop", claude_path, False))
+
+    # 2. Cursor IDE
+    if target_client in ("all", "cursor"):
+        for cursor_path in get_cursor_config_paths():
+            if cursor_path.exists():
+                try:
+                    with open(cursor_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    if "mcpServers" in data and server_name in data["mcpServers"]:
+                        shutil.copy2(cursor_path, str(cursor_path) + ".bak")
+                        del data["mcpServers"][server_name]
+                        with open(cursor_path, "w", encoding="utf-8") as f:
+                            json.dump(data, f, indent=2)
+                        results.append(("Cursor IDE", cursor_path, True))
+                except Exception:
+                    continue
+
+    # 3. Windsurf
+    if target_client in ("all", "windsurf"):
+        windsurf_path = get_windsurf_config_path()
+        if windsurf_path.exists():
+            try:
+                with open(windsurf_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if "mcpServers" in data and server_name in data["mcpServers"]:
+                    shutil.copy2(windsurf_path, str(windsurf_path) + ".bak")
+                    del data["mcpServers"][server_name]
+                    with open(windsurf_path, "w", encoding="utf-8") as f:
+                        json.dump(data, f, indent=2)
+                    results.append(("Windsurf", windsurf_path, True))
+            except Exception:
+                pass
+
+    return results
