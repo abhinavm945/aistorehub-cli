@@ -1,6 +1,8 @@
 # AIStoreHub CLI (`aistorehub` / `aihub`)
 
 [![PyPI Version](https://img.shields.io/pypi/v/aistorehub.svg)](https://pypi.org/project/aistorehub/)
+[![PyPI Downloads](https://img.shields.io/pypi/dm/aistorehub?color=10b981&label=PyPI%20Downloads&logo=pypi&logoColor=white)](https://pypi.org/project/aistorehub/)
+[![PyPI Weekly](https://img.shields.io/pypi/dw/aistorehub?color=059669&label=Weekly%20Installs)](https://pypi.org/project/aistorehub/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python: 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/)
 
