@@ -704,10 +704,11 @@ def _do_pull_or_clone(target: str, dest: str, extract: bool, no_telemetry: bool 
                 except Exception as e:
                     click.secho(f"  ! Could not download artifact {art_name}: {e}", fg="yellow")
 
-        # 4b. If no custom artifacts are uploaded, fetch complete upstream codebase from Git repository
+        # 4b. If no full zip archive was downloaded, fetch complete upstream codebase from Git repository
+        has_full_zip = any(a.get("name", "").lower().endswith(".zip") for a in artifacts)
         manifest_meta = sys_data.get("manifest_data") or {}
         upstream_repo = sys_data.get("github_repo_url") or manifest_meta.get("original_repo_url")
-        if not artifacts and upstream_repo and "github.com/" in upstream_repo:
+        if not has_full_zip and upstream_repo and "github.com/" in upstream_repo:
             click.echo(f"  Fetching upstream codebase from {upstream_repo}...")
             code_files_count = _pull_upstream_github_repo(upstream_repo, out_dir)
             if code_files_count > 0:
