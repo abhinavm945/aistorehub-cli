@@ -1185,8 +1185,7 @@ def telemetry(action: str):
         click.echo("---")
 
 
-if __name__ == "__main__":
-    cli()
+
 
 
 @cli.command("lint")
@@ -1280,3 +1279,7 @@ def validate(client: str, custom_file: Optional[Path], fix: bool):
 def doctor(client: str, custom_file: Optional[Path], fix: bool):
     """Run full system diagnostics on local AI client MCP configurations."""
     lint.callback(client=client, custom_file=custom_file, fix=fix)
+
+
+if __name__ == "__main__":
+    cli()
