@@ -17,12 +17,12 @@ if hasattr(sys.stderr, "reconfigure"):
 
 from .config import get_config, set_token, clear_auth, get_token, DEFAULT_API_URL
 from .client import APIClient
-from .mcp import inject_mcp_config, list_mcp_servers, remove_mcp_config
+from .mcp import inject_mcp_config, list_mcp_servers, remove_mcp_config, lint_mcp_configs
 from .packager import inspect_directory, create_bundle_zip
 
 
 @click.group()
-@click.version_option("0.1.8", prog_name="aistorehub")
+@click.version_option("0.1.9", prog_name="aistorehub")
 @click.option("--no-telemetry", is_flag=True, default=False, help="Disable anonymous usage telemetry for this command invocation")
 def cli(no_telemetry: bool = False):
     """
@@ -1120,3 +1120,96 @@ def telemetry(action: str):
 
 if __name__ == "__main__":
     cli()
+
+
+@cli.command("lint")
+@click.option("--client", "-c", default="all", type=click.Choice(["all", "cursor", "claude", "windsurf", "zed"]), help="Target AI client to diagnose")
+@click.option("--file", "-f", "custom_file", type=click.Path(exists=True, path_type=Path), help="Path to a custom JSON configuration file to validate")
+@click.option("--fix", is_flag=True, default=False, help="Automatically clean trailing commas and strip broken comments")
+def lint(client: str, custom_file: Optional[Path], fix: bool):
+    """
+    Diagnose & validate local MCP server configurations.
+    Scans for broken JSON syntax, missing binaries, invalid relative paths,
+    and unpopulated API key placeholders before your IDE crashes.
+    """
+    click.echo(click.style("\nAIStoreHub MCP Diagnostics & Schema Linter", bold=True))
+    click.echo(click.style("-" * 48, fg="bright_black"))
+
+    reports = lint_mcp_configs(target_client=client, custom_file=custom_file, auto_fix=fix)
+    
+    existing_reports = [r for r in reports if r.exists]
+    if not existing_reports:
+        click.echo(click.style("[INFO] No MCP configuration files found on this machine for target client(s).", fg="cyan"))
+        click.echo("Target paths checked:")
+        for r in reports:
+            click.echo(f"  - {r.client_name}: {r.path}")
+        click.echo("\nTip: Run 'aihub mcp install <owner>/<slug>' to auto-configure your first server.\n")
+        return
+
+    total_issues = 0
+    total_errors = 0
+    total_warns = 0
+
+    for rep in existing_reports:
+        status_color = "green" if rep.valid_json and not rep.issues else "red" if not rep.valid_json else "yellow"
+        badge = "[PASS]" if rep.valid_json and not rep.issues else "[FAIL]" if not rep.valid_json else "[WARN]"
+        
+        click.echo(f"\n{click.style(badge, fg=status_color, bold=True)} {click.style(rep.client_name, bold=True)}")
+        click.echo(click.style(f"  Location: {rep.path}", fg="bright_black"))
+        
+        if rep.fixed:
+            click.echo(click.style("  [FIXED] Auto-repaired trailing commas/comments. Backup created at .bak", fg="green"))
+
+        if not rep.valid_json:
+            total_errors += 1
+            click.echo(click.style(f"  [ERROR] Broken JSON syntax: {rep.syntax_error}", fg="red"))
+            click.echo("  Fix tip: Run 'aihub lint --fix' to automatically clean trailing commas and comments.")
+            continue
+
+        click.echo(f"  Configured Servers: {rep.server_count}")
+
+        if not rep.issues:
+            click.echo(click.style("  All servers passed syntax, schema, and environment audits cleanly.", fg="green"))
+        else:
+            for issue in rep.issues:
+                total_issues += 1
+                if issue.severity == "ERROR":
+                    total_errors += 1
+                    sev_style = click.style("[ERROR]", fg="red", bold=True)
+                elif issue.severity == "WARN":
+                    total_warns += 1
+                    sev_style = click.style("[WARN] ", fg="yellow", bold=True)
+                else:
+                    sev_style = click.style("[INFO] ", fg="cyan")
+
+                click.echo(f"  {sev_style} {issue.server}: {issue.message}")
+                if issue.suggestion:
+                    click.echo(click.style(f"          -> Tip: {issue.suggestion}", fg="bright_black"))
+
+    click.echo(click.style("\n" + "-" * 48, fg="bright_black"))
+    if total_errors == 0 and total_warns == 0:
+        click.echo(click.style("Result: 0 issues found. All MCP configs are healthy and ready to run!\n", fg="green", bold=True))
+    elif total_errors == 0:
+        click.echo(click.style(f"Result: {total_warns} warning(s) found. IDE will boot, but review tips above.\n", fg="yellow", bold=True))
+    else:
+        click.echo(click.style(f"Result: {total_errors} critical error(s) found that will crash your IDE.\n", fg="red", bold=True))
+        if not fix:
+            click.echo("Run 'aihub lint --fix' to auto-repair JSON syntax where possible.\n")
+
+
+@cli.command("validate")
+@click.option("--client", "-c", default="all", type=click.Choice(["all", "cursor", "claude", "windsurf", "zed"]), help="Target AI client to diagnose")
+@click.option("--file", "-f", "custom_file", type=click.Path(exists=True, path_type=Path), help="Path to a custom JSON configuration file to validate")
+@click.option("--fix", is_flag=True, default=False, help="Automatically clean trailing commas and strip broken comments")
+def validate(client: str, custom_file: Optional[Path], fix: bool):
+    """Alias for 'aistorehub lint'."""
+    lint.callback(client=client, custom_file=custom_file, fix=fix)
+
+
+@cli.command("doctor")
+@click.option("--client", "-c", default="all", type=click.Choice(["all", "cursor", "claude", "windsurf", "zed"]), help="Target AI client to diagnose")
+@click.option("--file", "-f", "custom_file", type=click.Path(exists=True, path_type=Path), help="Path to a custom JSON configuration file to validate")
+@click.option("--fix", is_flag=True, default=False, help="Automatically clean trailing commas and strip broken comments")
+def doctor(client: str, custom_file: Optional[Path], fix: bool):
+    """Run full system diagnostics on local AI client MCP configurations."""
+    lint.callback(client=client, custom_file=custom_file, fix=fix)

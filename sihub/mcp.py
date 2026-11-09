@@ -3,7 +3,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 
 
 def get_claude_config_path() -> Path:
@@ -249,3 +249,252 @@ def remove_mcp_config(
                 pass
 
     return results
+
+
+class LintIssue:
+    def __init__(self, severity: str, server: str, message: str, suggestion: str = ""):
+        self.severity = severity  # "ERROR", "WARN", "INFO"
+        self.server = server
+        self.message = message
+        self.suggestion = suggestion
+
+
+class ClientLintReport:
+    def __init__(self, client_name: str, path: Path):
+        self.client_name = client_name
+        self.path = path
+        self.exists = False
+        self.valid_json = True
+        self.syntax_error: Optional[str] = None
+        self.server_count = 0
+        self.issues: List[LintIssue] = []
+        self.fixed = False
+
+
+def _lint_single_file(client_name: str, path: Path, auto_fix: bool = False) -> ClientLintReport:
+    import re
+    import shutil
+
+    report = ClientLintReport(client_name, path)
+    if not path.exists():
+        report.exists = False
+        return report
+
+    report.exists = True
+    raw_text = path.read_text(encoding="utf-8", errors="replace")
+    
+    # 1. Test standard JSON parsing
+    data = None
+    try:
+        data = json.loads(raw_text)
+    except json.JSONDecodeError as err:
+        report.valid_json = False
+        report.syntax_error = f"{err.msg} at line {err.lineno}, col {err.colno}"
+        
+        # Check for common syntax culprits: trailing commas and comments
+        has_trailing_commas = bool(re.search(r",\s*([}\]])", raw_text))
+        has_comments = bool(re.search(r"(//.*|/\*.*?\*/)", raw_text, re.DOTALL))
+        
+        if has_trailing_commas or has_comments:
+            clean_candidate = re.sub(r"//.*", "", raw_text)
+            clean_candidate = re.sub(r"/\*.*?\*/", "", clean_candidate, flags=re.DOTALL)
+            clean_candidate = re.sub(r",\s*([}\]])", r"\1", clean_candidate)
+            
+            try:
+                fixed_data = json.loads(clean_candidate)
+                if auto_fix:
+                    shutil.copy2(path, str(path) + ".bak")
+                    path.write_text(json.dumps(fixed_data, indent=2), encoding="utf-8")
+                    report.fixed = True
+                    report.valid_json = True
+                    data = fixed_data
+                    report.issues.append(
+                        LintIssue(
+                            "INFO",
+                            "FILE",
+                            "Auto-fixed JSON formatting errors (removed trailing commas/comments). Backup created at .bak",
+                            "No action needed",
+                        )
+                    )
+                else:
+                    report.issues.append(
+                        LintIssue(
+                            "ERROR",
+                            "FILE",
+                            f"JSON syntax error ({report.syntax_error}). Found trailing commas or comments which break Cursor/Claude.",
+                            "Run 'aihub lint --fix' to automatically clean and repair this config.",
+                        )
+                    )
+            except Exception:
+                pass
+
+        if not report.fixed:
+            report.issues.append(
+                LintIssue(
+                    "ERROR",
+                    "FILE",
+                    f"Syntax error: {report.syntax_error}",
+                    "Fix manual syntax error in your editor.",
+                )
+            )
+            return report
+
+    if not isinstance(data, dict):
+        report.issues.append(
+            LintIssue(
+                "ERROR",
+                "ROOT",
+                f"Config root must be a JSON object ({...}), found {type(data).__name__}.",
+                "Wrap your servers inside { \"mcpServers\": { ... } }",
+            )
+        )
+        return report
+
+    # 2. Check mcpServers key
+    servers = data.get("mcpServers") or data.get("mcp_servers")
+    if servers is None:
+        report.issues.append(
+            LintIssue(
+                "WARN",
+                "ROOT",
+                "Missing \"mcpServers\" object in configuration.",
+                "Define your tools under the \"mcpServers\" key.",
+            )
+        )
+        return report
+
+    if not isinstance(servers, dict):
+        report.issues.append(
+            LintIssue(
+                "ERROR",
+                "ROOT",
+                f"\"mcpServers\" must be a key-value dictionary, got {type(servers).__name__}.",
+                "Change \"mcpServers\" to an object with server names as keys.",
+            )
+        )
+        return report
+
+    report.server_count = len(servers)
+
+    # 3. Per-Server Validation
+    for name, srv in servers.items():
+        if not isinstance(srv, dict):
+            report.issues.append(
+                LintIssue("ERROR", name, f"Server config must be an object, got {type(srv).__name__}.")
+            )
+            continue
+
+        cmd = srv.get("command")
+        if not cmd or not isinstance(cmd, str) or not cmd.strip():
+            report.issues.append(
+                LintIssue(
+                    "ERROR",
+                    name,
+                    "Missing required \"command\" attribute.",
+                    "Specify execution binary (e.g., \"npx\", \"python\", \"uvx\", \"docker\").",
+                )
+            )
+        else:
+            # Check binary availability in PATH
+            clean_cmd = cmd.strip()
+            binary_name = Path(clean_cmd).name
+            if not shutil.which(clean_cmd) and not shutil.which(binary_name):
+                # Only warn for common binaries where PATH failure breaks client silently
+                if binary_name in ("npx", "node", "uvx", "python", "python3", "docker", "uv"):
+                    report.issues.append(
+                        LintIssue(
+                            "WARN",
+                            name,
+                            f"Binary \"{clean_cmd}\" was not found in your current system PATH.",
+                            f"Verify that {binary_name} is installed and accessible from terminal shells.",
+                        )
+                    )
+
+        # Check args
+        args = srv.get("args")
+        if args is not None:
+            if not isinstance(args, list):
+                report.issues.append(
+                    LintIssue("ERROR", name, f"\"args\" must be an array of strings, got {type(args).__name__}.")
+                )
+            else:
+                for idx, arg in enumerate(args):
+                    arg_str = str(arg)
+                    # Detect broken relative paths (e.g. ./server.js or src/index.ts)
+                    if (arg_str.startswith("./") or arg_str.startswith(".\\")) and not Path(arg_str).exists():
+                        report.issues.append(
+                            LintIssue(
+                                "WARN",
+                                name,
+                                f"Arg [{idx}] \"{arg_str}\" is a relative path that does not exist in the current directory.",
+                                "Cursor and Claude Desktop launch servers from their own root directory. Use an absolute path or Path.resolve().",
+                            )
+                        )
+
+        # Check env placeholders
+        env = srv.get("env")
+        if env is not None:
+            if not isinstance(env, dict):
+                report.issues.append(
+                    LintIssue("ERROR", name, f"\"env\" must be a key-value object of strings, got {type(env).__name__}.")
+                )
+            else:
+                for env_k, env_v in env.items():
+                    val = str(env_v).strip()
+                    if not val:
+                        report.issues.append(
+                            LintIssue(
+                                "WARN",
+                                name,
+                                f"Environment variable \"{env_k}\" is empty.",
+                                f"Provide a valid value for {env_k}.",
+                            )
+                        )
+                    elif (
+                        "<" in val
+                        or "YOUR_" in val.upper()
+                        or "KEY_HERE" in val.upper()
+                        or val.startswith("sk-ant-api...")
+                        or val.startswith("sk-proj-...")
+                    ):
+                        report.issues.append(
+                            LintIssue(
+                                "ERROR",
+                                name,
+                                f"Environment variable \"{env_k}\" contains unconfigured placeholder: \"{val}\"",
+                                f"Replace placeholder with your actual {env_k} credentials.",
+                            )
+                        )
+
+    return report
+
+
+def lint_mcp_configs(
+    target_client: str = "all",
+    custom_file: Optional[Path] = None,
+    auto_fix: bool = False,
+) -> List[ClientLintReport]:
+    """
+    Scans, lints, and optionally auto-fixes MCP configurations across all detected AI environments.
+    """
+    reports: List[ClientLintReport] = []
+
+    if custom_file:
+        reports.append(_lint_single_file("Custom Config", custom_file, auto_fix=auto_fix))
+        return reports
+
+    if target_client in ("all", "claude"):
+        reports.append(_lint_single_file("Claude Desktop", get_claude_config_path(), auto_fix=auto_fix))
+
+    if target_client in ("all", "cursor"):
+        for p in get_cursor_config_paths():
+            scope = "Workspace" if str(p).startswith(str(Path.cwd())) else "Global User"
+            reports.append(_lint_single_file(f"Cursor ({scope})", p, auto_fix=auto_fix))
+
+    if target_client in ("all", "windsurf"):
+        reports.append(_lint_single_file("Windsurf", get_windsurf_config_path(), auto_fix=auto_fix))
+
+    if target_client in ("all", "zed"):
+        reports.append(_lint_single_file("Zed", get_zed_config_path(), auto_fix=auto_fix))
+
+    return reports
