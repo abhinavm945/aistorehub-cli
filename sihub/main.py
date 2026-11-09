@@ -22,7 +22,7 @@ from .packager import inspect_directory, create_bundle_zip
 
 
 @click.group()
-@click.version_option("0.1.9", prog_name="aistorehub")
+@click.version_option("0.1.10", prog_name="aistorehub")
 @click.option("--no-telemetry", is_flag=True, default=False, help="Disable anonymous usage telemetry for this command invocation")
 def cli(no_telemetry: bool = False):
     """
@@ -30,7 +30,6 @@ def cli(no_telemetry: bool = False):
     Discover, pull, publish, and auto-configure AI systems and MCP servers.
     """
     if no_telemetry:
-        import os
         os.environ["DO_NOT_TRACK"] = "1"
 
 
@@ -371,7 +370,6 @@ def mcp(
       aihub mcp remove stitch-skills
     """
     if no_telemetry:
-        import os
         os.environ["DO_NOT_TRACK"] = "1"
 
     # Handle sub-command style: aihub mcp list / aihub mcp ls
@@ -608,13 +606,20 @@ def _pull_upstream_github_repo(upstream_repo: str, out_dir: Path) -> int:
         return 0
 
 
-def _do_pull_or_clone(target: str, dest: str, extract: bool, no_telemetry: bool = False, action_label: str = "Pulling"):
-    """Core logic to pull or clone an AI system bundle, codebase, and instructions."""
+def _do_pull_or_clone(
+    target: str,
+    dest: Optional[str],
+    extract: bool,
+    no_telemetry: bool = False,
+    action_label: str = "Pulling",
+    as_zip: bool = False,
+):
+    """Core logic to pull, clone, or download an AI system bundle, codebase, and instructions."""
     import json
     import zipfile
+    import tempfile
 
     if no_telemetry:
-        import os
         os.environ["DO_NOT_TRACK"] = "1"
 
     parts = target.strip("/").split("/")
@@ -631,12 +636,24 @@ def _do_pull_or_clone(target: str, dest: str, extract: bool, no_telemetry: bool 
         repo = None
         system_slug = parts[0]
 
+    # Check if dest explicitly asked for a .zip file
+    if dest and dest.lower().endswith(".zip"):
+        as_zip = True
+
     api = APIClient()
     click.echo(f"{action_label} {owner}/{system_slug} from AIStoreHub...")
 
     try:
         sys_data = api.get_system(owner=owner, system_slug=system_slug, repo=repo)
-        out_dir = Path(dest) if dest else Path.cwd() / system_slug
+        
+        # If user wants a zip archive, stage in a temp directory first
+        tmp_dir_obj = None
+        if as_zip:
+            tmp_dir_obj = tempfile.TemporaryDirectory()
+            out_dir = Path(tmp_dir_obj.name) / system_slug
+        else:
+            out_dir = Path(dest) if dest else Path.cwd() / system_slug
+            
         out_dir.mkdir(parents=True, exist_ok=True)
 
         sys_type = sys_data.get("type", "prompt")
@@ -661,7 +678,7 @@ def _do_pull_or_clone(target: str, dest: str, extract: bool, no_telemetry: bool 
         if not instructions_text and sys_type == "mcp_server":
             instructions_text = (
                 f"Configure in Claude Desktop or Cursor:\n"
-                f"Run command: aistorehub mcp {owner}/{system_slug}\n\n"
+                f"Run command: aistorehub mcp install {owner}/{system_slug} --client cursor\n\n"
                 f"Or inspect aistorehub.json and package.json to run locally.\n"
             )
         if instructions_text:
@@ -715,17 +732,45 @@ def _do_pull_or_clone(target: str, dest: str, extract: bool, no_telemetry: bool 
                 downloaded_count += code_files_count
                 click.secho(f"  ✓ Downloaded and unpacked {code_files_count} codebase files from upstream repository", fg="green")
 
-        past_verb = "cloned" if action_label.lower().startswith("clone") else "pulled"
-        click.secho(f"\n✓ Successfully {past_verb} {owner}/{system_slug} to {out_dir.resolve()}", fg="green", bold=True)
+        # If as_zip was requested, compress out_dir into destination zip file
+        if as_zip:
+            if dest and dest.lower().endswith(".zip"):
+                target_zip = Path(dest)
+            elif dest:
+                target_zip = Path(dest) / f"{system_slug}.zip"
+            else:
+                target_zip = Path.cwd() / f"{system_slug}.zip"
+
+            target_zip.parent.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(target_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+                for root, _, files in os.walk(out_dir):
+                    for file in files:
+                        full_path = Path(root) / file
+                        rel_path = full_path.relative_to(out_dir)
+                        zf.write(full_path, rel_path)
+
+            file_size_kb = target_zip.stat().st_size / 1024
+            click.secho(f"\n✓ Successfully downloaded package archive: {target_zip.resolve()} ({file_size_kb:.1f} KB)", fg="green", bold=True)
+            if tmp_dir_obj:
+                tmp_dir_obj.cleanup()
+        else:
+            past_verb = (
+                "downloaded"
+                if action_label.lower().startswith("download")
+                else ("cloned" if action_label.lower().startswith("clone") else "pulled")
+            )
+            click.secho(f"\n✓ Successfully {past_verb} {owner}/{system_slug} to {out_dir.resolve()}", fg="green", bold=True)
+
         if sys_data and sys_data.get("id"):
-            api.log_event("pull_succeeded", system_id=sys_data["id"])
+            event_name = "download_succeeded" if action_label.lower().startswith("download") else "pull_succeeded"
+            api.log_event(event_name, system_id=sys_data["id"])
 
         # 5. Print tailored quickstart based on system type
         click.echo("\n--- Quickstart ---")
         if sys_type == "mcp_server":
             click.secho("• Model Context Protocol (MCP) Server detected:", bold=True)
             click.echo(f"  Auto-configure into Claude Desktop or Cursor by running:")
-            click.secho(f"  aistorehub mcp {owner}/{system_slug}", fg="cyan", bold=True)
+            click.secho(f"  aistorehub mcp install {owner}/{system_slug} --client cursor", fg="cyan", bold=True)
         elif sys_type in ("prompt", "skill", "template"):
             click.secho(f"• {sys_type.capitalize()} instructions saved in instructions.txt", bold=True)
             click.echo("  Copy and paste instructions or integrate into your prompt pipeline.")
@@ -748,31 +793,53 @@ def _do_pull_or_clone(target: str, dest: str, extract: bool, no_telemetry: bool 
         sys.exit(1)
 
 
+
 @cli.command()
 @click.argument("target")
-@click.option("--dest", default=None, help="Destination directory (defaults to system slug)")
+@click.option("--dest", default=None, help="Destination directory or .zip file path (defaults to system slug)")
+@click.option("--zip", "as_zip", is_flag=True, default=False, help="Save directly as a compressed .zip archive package")
 @click.option("--extract/--no-extract", default=True, help="Automatically extract zip packages if downloaded")
 @click.option("--no-telemetry", is_flag=True, default=False, help="Disable anonymous usage telemetry for this command")
-def pull(target: str, dest: str, extract: bool, no_telemetry: bool = False):
+def pull(target: str, dest: str, as_zip: bool = False, extract: bool = True, no_telemetry: bool = False):
     """
     Pull an AI system bundle, artifacts, and instructions into a local directory.
     Example: aistorehub pull community/catalog/brave-search-mcp
     """
-    _do_pull_or_clone(target, dest, extract, no_telemetry, action_label="Pulling")
+    _do_pull_or_clone(target, dest, extract, no_telemetry, action_label="Pulling", as_zip=as_zip)
 
 
 @cli.command()
 @click.argument("target")
-@click.option("--dest", default=None, help="Destination directory (defaults to system slug)")
+@click.option("--dest", default=None, help="Destination directory or .zip file path (defaults to system slug)")
+@click.option("--zip", "as_zip", is_flag=True, default=False, help="Save directly as a compressed .zip archive package")
 @click.option("--extract/--no-extract", default=True, help="Automatically extract zip packages if downloaded")
 @click.option("--no-telemetry", is_flag=True, default=False, help="Disable anonymous usage telemetry for this command")
-def clone(target: str, dest: str, extract: bool, no_telemetry: bool = False):
+def clone(target: str, dest: str, as_zip: bool = False, extract: bool = True, no_telemetry: bool = False):
     """
     Clone an AI system codebase, bundle, and configuration into a local directory.
     Alias for 'aistorehub pull'.
     Example: aistorehub clone community/catalog/brave-search-mcp
     """
-    _do_pull_or_clone(target, dest, extract, no_telemetry, action_label="Cloning")
+    _do_pull_or_clone(target, dest, extract, no_telemetry, action_label="Cloning", as_zip=as_zip)
+
+
+@cli.command()
+@click.argument("target")
+@click.option("--dest", default=None, help="Destination directory or .zip file path (defaults to system slug)")
+@click.option("--zip", "as_zip", is_flag=True, default=False, help="Save directly as a compressed .zip archive package")
+@click.option("--extract/--no-extract", default=True, help="Automatically extract zip packages if downloaded")
+@click.option("--no-telemetry", is_flag=True, default=False, help="Disable anonymous usage telemetry for this command")
+def download(target: str, dest: str, as_zip: bool = False, extract: bool = True, no_telemetry: bool = False):
+    """
+    Download an AI system package, MCP server, agent, or prompt directly to your machine.
+
+    Examples:
+      aihub download community/brave-search-mcp
+      aihub download community/linkedin-agent-skill --zip
+      aihub download community/super-video-maker-skill --dest ./my-tools
+      aihub download community/github-mcp-server --zip --dest ./github.zip
+    """
+    _do_pull_or_clone(target, dest, extract, no_telemetry, action_label="Downloading", as_zip=as_zip)
 
 
 @cli.command()

@@ -7,8 +7,8 @@ long_description = readme_path.read_text(encoding="utf-8") if readme_path.exists
 
 setup(
     name="aistorehub",
-    version="0.1.9",
-    description="The Official CLI for AIStoreHub - Discover, pull, publish, and configure AI systems and MCP servers.",
+    version="0.1.10",
+    description="The Official CLI for AIStoreHub - Discover, download, pull, publish, and configure AI systems and MCP servers.",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://aistorehub.in",
