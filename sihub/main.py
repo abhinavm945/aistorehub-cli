@@ -849,8 +849,9 @@ def download(target: str, dest: str, as_zip: bool = False, extract: bool = True,
 @click.argument("target")
 @click.option("--dest", default=None, help="Working directory (defaults to system slug)")
 @click.option("--input", "user_input", default=None, help="Input prompt or task description to pass to the system")
+@click.option("--dry-run", is_flag=True, default=False, help="Safety-by-Design preview: inspect manifest, entry point, and dependencies without executing system commands")
 @click.option("--no-telemetry", is_flag=True, default=False, help="Disable anonymous usage telemetry for this command")
-def run(target: str, dest: str, user_input: Optional[str] = None, no_telemetry: bool = False):
+def run(target: str, dest: str, user_input: Optional[str] = None, dry_run: bool = False, no_telemetry: bool = False):
     """
     Execute or run an AI system locally.
 
@@ -860,6 +861,7 @@ def run(target: str, dest: str, user_input: Optional[str] = None, no_telemetry: 
 
     Example:
       aihub run community/astrbot
+      aihub run community/astrbot --dry-run
       aihub run community/stitch-skills --input "Build an obsidian dark theme navbar"
     """
     import subprocess
@@ -903,6 +905,20 @@ def run(target: str, dest: str, user_input: Optional[str] = None, no_telemetry: 
     click.secho(f"[RUN] Executing {sys_name} ({sys_type})", bold=True, fg="green")
     click.echo(f"   Directory: {out_dir.resolve()}")
     click.echo(f"==============================================================================\n")
+
+    if dry_run:
+        click.secho("[DRY-RUN] Safety-by-Design Sandbox Simulation Mode Enabled.", fg="yellow", bold=True)
+        click.echo(f"  Package Name:  {sys_name}")
+        click.echo(f"  Type:          {sys_type}")
+        click.echo(f"  Target Dir:    {out_dir.resolve()}")
+        py_candidates = ["main.py", "agent.py", "run.py", "bot.py", "app.py", "cli.py"]
+        found_entry = next((c for c in py_candidates if (out_dir / c).exists()), None)
+        if found_entry:
+            click.echo(f"  Entry Point:   {found_entry}")
+        if (out_dir / "requirements.txt").exists():
+            click.echo(f"  Requirements:  {(out_dir / 'requirements.txt').name} (dependencies detected)")
+        click.secho("\n[OK] Dry-run completed safely. No local subprocesses or child_process commands executed.", fg="green")
+        return
 
     # Case A: Prompts, Skills, and Templates
     if sys_type in ("prompt", "skill", "template"):
