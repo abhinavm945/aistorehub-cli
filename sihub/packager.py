@@ -22,14 +22,26 @@ def inspect_directory(dir_path: Path) -> Dict[str, Any]:
         "endpoint_url": None,
     }
 
-    # 0. Check explicit aistorehub.json manifest
+    # 0. Check explicit aistorehub.json or manifest.yaml manifest
     manifest_file = dir_path / "aistorehub.json"
     if manifest_file.is_file():
         try:
             m_data = json.loads(manifest_file.read_text(encoding="utf-8"))
-            for k in ("name", "slug", "description", "type", "version", "channel"):
+            for k in ("name", "slug", "description", "type", "version", "channel", "synthetic_media", "license"):
                 if k in m_data and m_data[k]:
                     detected[k] = m_data[k]
+        except Exception:
+            pass
+
+    manifest_yaml = dir_path / "manifest.yaml"
+    if manifest_yaml.is_file():
+        try:
+            import yaml
+            y_data = yaml.safe_load(manifest_yaml.read_text(encoding="utf-8"))
+            if isinstance(y_data, dict):
+                for k in ("name", "slug", "description", "type", "version", "channel", "synthetic_media", "license"):
+                    if k in y_data and y_data[k]:
+                        detected[k] = y_data[k]
         except Exception:
             pass
 
