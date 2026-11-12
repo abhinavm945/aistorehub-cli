@@ -6,7 +6,36 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python: 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/)
 
-The official command-line interface for **[AIStoreHub](https://aistorehub.in)** — the open registry and marketplace for autonomous AI systems, model instructions, agent workflows, and Model Context Protocol (MCP) servers.
+The official command-line interface for **[AIStoreHub](https://www.aistorehub.in)** — the open registry and marketplace for autonomous AI systems, model instructions, agent workflows, and Model Context Protocol (MCP) servers.
+
+* **Web Platform:** [https://www.aistorehub.in](https://www.aistorehub.in)
+* **MCP Directory:** [https://www.aistorehub.in/categories/mcp-servers](https://www.aistorehub.in/categories/mcp-servers)
+* **Documentation:** [https://www.aistorehub.in/docs](https://www.aistorehub.in/docs)
+* **CLI Reference:** [https://www.aistorehub.in/cli](https://www.aistorehub.in/cli)
+* **Curated MCP List:** [Awesome MCP Servers](https://github.com/abhinavm945/awesome-mcp-servers)
+
+---
+
+## Featured Tools & 1-Click Pull Commands
+
+| System / Tool | Description | 1-Click Install Command |
+| :--- | :--- | :--- |
+| **[Omniroute MCP](https://www.aistorehub.in/community/catalog/omniroute)** | Multi-LLM intelligent model router with fallback | `aistorehub pull community/catalog/omniroute` |
+| **[Super Video Maker](https://www.aistorehub.in/community/catalog/super-video-maker-skill)** | Autonomous video composition & script pipeline | `aistorehub pull community/catalog/super-video-maker-skill` |
+| **[PostgreSQL Inspector](https://www.aistorehub.in/community/catalog/mcp-server-postgres)** | Real-time schema discovery & SQL query explain | `aistorehub pull community/catalog/mcp-server-postgres` |
+| **[Filesystem MCP](https://www.aistorehub.in/community/catalog/mcp-filesystem)** | Scoped directory sandboxing for Claude & Cursor | `aistorehub pull community/catalog/mcp-filesystem` |
+| **[VoiceStudio AI](https://www.aistorehub.in/community/catalog/voicestudio)** | AI voiceover & multi-speaker dialogue synthesizer | `aistorehub pull community/catalog/voicestudio` |
+| **[Harvey Sales Agent](https://www.aistorehub.in/community/catalog/harvey)** | Autonomous prospect outreach & meeting booking | `aistorehub pull community/catalog/harvey` |
+
+---
+
+## Technical Guides & Documentation
+
+* **[Top 25 Model Context Protocol Servers Handbook (2026)](https://www.aistorehub.in/blog/top-mcp-servers-cursor-claude-2026)**
+* **[How to Build & Publish an MCP Server in Python with FastMCP](https://www.aistorehub.in/blog/how-to-build-python-mcp-server-fastmcp)**
+* **[Where is claude_desktop_config.json? Exact Paths for Windows & Mac](https://www.aistorehub.in/blog/claude-desktop-mcp-setup-troubleshooting-guide)**
+* **[How to Add & Configure MCP in Cursor: Complete mcp.json Setup Guide](https://www.aistorehub.in/blog/cursor-mcp-setup-guide-troubleshooting-tools)**
+* **[Fixing MCP Error -32000 Connection Closed & Exit Code 1 Errors](https://www.aistorehub.in/blog/mcp-connection-closed-exit-code-debugging-guide)**
 
 ---
 
