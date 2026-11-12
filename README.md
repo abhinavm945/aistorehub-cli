@@ -167,12 +167,12 @@ AIStoreHub CLI records minimal, client-reported activity events (`pull_succeeded
 
 ## 📚 Resources & Documentation
 
-* **Marketplace & Catalog**: [https://aistorehub.in](https://aistorehub.in)
-* **CLI Reference**: [https://aistorehub.in/cli](https://aistorehub.in/cli)
-* **Full Documentation**: [https://aistorehub.in/docs](https://aistorehub.in/docs)
+* **Marketplace & Catalog**: [https://www.aistorehub.in](https://www.aistorehub.in)
+* **CLI Reference**: [https://www.aistorehub.in/cli](https://www.aistorehub.in/cli)
+* **Full Documentation**: [https://www.aistorehub.in/docs](https://www.aistorehub.in/docs)
 
 ---
 
 ## 📄 License
 
-MIT © [AIStoreHub Team](https://aistorehub.in)
+MIT © [AIStoreHub Team](https://www.aistorehub.in)
