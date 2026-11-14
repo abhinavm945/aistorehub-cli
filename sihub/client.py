@@ -63,30 +63,42 @@ class APIClient:
     def get_system(self, owner: str, system_slug: str, repo: Optional[str] = None) -> Dict[str, Any]:
         owner_clean = owner.lstrip("@")
         with httpx.Client(timeout=30.0) as client:
+            last_resp = None
+
             # 1. If explicit repo provided, fetch direct endpoint
             if repo:
                 resp = client.get(
                     f"{self.base_url}/systems/{owner_clean}/{repo}/{system_slug}",
                     headers=self._headers(),
                 )
+                last_resp = resp
                 if resp.status_code == 200:
                     return resp.json()
+                if resp.status_code == 429:
+                    resp.raise_for_status()
 
             # 2. Try standard catalog repository (community & standard packages)
-            resp = client.get(
-                f"{self.base_url}/systems/{owner_clean}/catalog/{system_slug}",
-                headers=self._headers(),
-            )
-            if resp.status_code == 200:
-                return resp.json()
+            if not repo or repo != "catalog":
+                resp = client.get(
+                    f"{self.base_url}/systems/{owner_clean}/catalog/{system_slug}",
+                    headers=self._headers(),
+                )
+                last_resp = resp
+                if resp.status_code == 200:
+                    return resp.json()
+                if resp.status_code == 429:
+                    resp.raise_for_status()
 
             # 3. Try owner/system_slug/system_slug
             resp = client.get(
                 f"{self.base_url}/systems/{owner_clean}/{system_slug}/{system_slug}",
                 headers=self._headers(),
             )
+            last_resp = resp
             if resp.status_code == 200:
                 return resp.json()
+            if resp.status_code == 429:
+                resp.raise_for_status()
 
             # 4. Resolve via search catalog
             search_resp = client.get(
@@ -111,9 +123,13 @@ class APIClient:
                         if detail_resp.status_code == 200:
                             return detail_resp.json()
                         return it
+            elif search_resp.status_code == 429:
+                search_resp.raise_for_status()
 
-            resp.raise_for_status()
-            return resp.json()
+            if last_resp is not None:
+                last_resp.raise_for_status()
+                return last_resp.json()
+            raise Exception(f"System '{owner}/{system_slug}' not found.")
 
     def download_artifact(self, artifact_id: str) -> bytes:
         with httpx.Client(timeout=60.0) as client:
