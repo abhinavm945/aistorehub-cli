@@ -467,19 +467,20 @@ def info(target: str):
     Display system metadata, license, upstream provenance, and installation commands.
     Example: aistorehub info mcp-server-postgres
     """
-    parts = target.strip("/").split("/")
+    clean_target = target.strip("/").strip()
+    parts = clean_target.split("/")
     if len(parts) >= 3:
-        owner = parts[0]
+        owner = parts[0].lstrip("@")
         repo = parts[1]
         system_slug = parts[2]
     elif len(parts) == 2:
-        owner = parts[0]
-        repo = None
+        owner = parts[0].lstrip("@")
+        repo = "catalog" if owner.lower() == "community" else None
         system_slug = parts[1]
     else:
         owner = "community"
-        repo = None
-        system_slug = parts[0]
+        repo = "catalog"
+        system_slug = parts[0].lstrip("@")
 
     api = APIClient()
     try:
@@ -625,19 +626,20 @@ def _do_pull_or_clone(
     if no_telemetry:
         os.environ["DO_NOT_TRACK"] = "1"
 
-    parts = target.strip("/").split("/")
+    clean_target = target.strip("/").strip()
+    parts = clean_target.split("/")
     if len(parts) >= 3:
-        owner = parts[0]
+        owner = parts[0].lstrip("@")
         repo = parts[1]
         system_slug = parts[2]
     elif len(parts) == 2:
-        owner = parts[0]
-        repo = None
+        owner = parts[0].lstrip("@")
+        repo = "catalog" if owner.lower() == "community" else None
         system_slug = parts[1]
     else:
         owner = "community"
-        repo = None
-        system_slug = parts[0]
+        repo = "catalog"
+        system_slug = parts[0].lstrip("@")
 
     # Check if dest explicitly asked for a .zip file
     if dest and dest.lower().endswith(".zip"):
@@ -867,19 +869,20 @@ def run(target: str, dest: str, user_input: Optional[str] = None, dry_run: bool 
     import subprocess
     import shutil
 
-    parts = target.strip("/").split("/")
+    clean_target = target.strip("/").strip()
+    parts = clean_target.split("/")
     if len(parts) >= 3:
-        owner = parts[0]
+        owner = parts[0].lstrip("@")
         repo = parts[1]
         system_slug = parts[2]
     elif len(parts) == 2:
-        owner = parts[0]
-        repo = None
+        owner = parts[0].lstrip("@")
+        repo = "catalog" if owner.lower() == "community" else None
         system_slug = parts[1]
     else:
         owner = "community"
-        repo = None
-        system_slug = parts[0]
+        repo = "catalog"
+        system_slug = parts[0].lstrip("@")
 
     out_dir = Path(dest) if dest else Path.cwd() / system_slug
 

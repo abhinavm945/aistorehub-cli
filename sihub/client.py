@@ -51,38 +51,47 @@ class APIClient:
             return resp.json()
 
     def search(self, query: str = "", limit: int = 15) -> List[Dict[str, Any]]:
-        with httpx.Client(timeout=10.0) as client:
+        with httpx.Client(timeout=30.0) as client:
             resp = client.get(
                 f"{self.base_url}/search",
-                params={"q": query, "limit": limit},
+                params={"q": query, "page_size": limit, "limit": limit},
                 headers=self._headers(),
             )
             resp.raise_for_status()
             return resp.json().get("items", [])
 
     def get_system(self, owner: str, system_slug: str, repo: Optional[str] = None) -> Dict[str, Any]:
-        with httpx.Client(timeout=10.0) as client:
+        owner_clean = owner.lstrip("@")
+        with httpx.Client(timeout=30.0) as client:
             # 1. If explicit repo provided, fetch direct endpoint
             if repo:
                 resp = client.get(
-                    f"{self.base_url}/systems/{owner}/{repo}/{system_slug}",
+                    f"{self.base_url}/systems/{owner_clean}/{repo}/{system_slug}",
                     headers=self._headers(),
                 )
                 if resp.status_code == 200:
                     return resp.json()
 
-            # 2. Try owner/system_slug/system_slug
+            # 2. Try standard catalog repository (community & standard packages)
             resp = client.get(
-                f"{self.base_url}/systems/{owner}/{system_slug}/{system_slug}",
+                f"{self.base_url}/systems/{owner_clean}/catalog/{system_slug}",
                 headers=self._headers(),
             )
             if resp.status_code == 200:
                 return resp.json()
 
-            # 3. Resolve via search catalog
+            # 3. Try owner/system_slug/system_slug
+            resp = client.get(
+                f"{self.base_url}/systems/{owner_clean}/{system_slug}/{system_slug}",
+                headers=self._headers(),
+            )
+            if resp.status_code == 200:
+                return resp.json()
+
+            # 4. Resolve via search catalog
             search_resp = client.get(
                 f"{self.base_url}/search",
-                params={"q": system_slug, "limit": 10},
+                params={"q": system_slug, "page_size": 10, "limit": 10},
                 headers=self._headers(),
             )
             if search_resp.status_code == 200:
@@ -92,7 +101,7 @@ class APIClient:
                         it.get("slug") == system_slug
                         or it.get("name", "").lower() == system_slug.lower()
                     ):
-                        o = it.get("owner_username") or owner
+                        o = (it.get("owner_username") or owner_clean).lstrip("@")
                         r = it.get("repository_slug") or "catalog"
                         s = it.get("slug") or system_slug
                         detail_resp = client.get(
