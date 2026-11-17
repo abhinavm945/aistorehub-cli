@@ -141,7 +141,7 @@ When inspecting or packaging a system (`aihub inspect` / `aihub publish`), the C
 You can optionally configure authentication, custom endpoints, and telemetry via environment variables:
 
 * `AISTOREHUB_TOKEN` or `AIHUB_TOKEN`: Personal Access Token (PAT).
-* `AISTOREHUB_API_URL` or `AIHUB_API_URL`: Custom API endpoint (default: `https://aistorehub-be.onrender.com/api/v1`).
+* `AISTOREHUB_API_URL` or `AIHUB_API_URL`: Custom API endpoint (default: `https://aistorehub-be-cgsu.onrender.com/api/v1`).
 * `DO_NOT_TRACK=1`, `AISTOREHUB_TELEMETRY_DISABLED=1`, or `AISTOREHUB_TELEMETRY=0`: Disables anonymous CLI usage telemetry.
 
 ---
