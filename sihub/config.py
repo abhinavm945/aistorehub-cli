@@ -13,7 +13,7 @@ DEFAULT_API_URL = (
     os.environ.get("AISTOREHUB_API_URL")
     or os.environ.get("AIHUB_API_URL")
     or os.environ.get("SIHUB_API_URL")
-    or "https://aistorehub-be-5dwr.onrender.com/api/v1"
+    or "https://aistorehub-be-cgsu.onrender.com/api/v1"
 )
 CONFIG_DIR = Path.home() / ".aistorehub"
 LEGACY_CONFIG_DIR = Path.home() / ".sihub"
@@ -125,8 +125,20 @@ def get_config() -> Dict[str, Any]:
     try:
         with open(file_to_read, "r", encoding="utf-8") as f:
             data = json.load(f)
-            if "api_url" not in data:
+            api_url = data.get("api_url", "")
+            is_defunct = (
+                not api_url
+                or "aistorehub-be.onrender.com" in api_url
+                or "aistorehub-be-3weo" in api_url
+                or "aistorehub-be-z2m1" in api_url
+                or "aistorehub-be-5dwr" in api_url
+            )
+            if is_defunct:
                 data["api_url"] = DEFAULT_API_URL
+                try:
+                    save_config(data)
+                except Exception:
+                    pass
             return data
     except Exception:
         return {"api_url": DEFAULT_API_URL, "user": None}
