@@ -13,7 +13,7 @@ DEFAULT_API_URL = (
     os.environ.get("AISTOREHUB_API_URL")
     or os.environ.get("AIHUB_API_URL")
     or os.environ.get("SIHUB_API_URL")
-    or "https://aistorehub-be-ya19.onrender.com/api/v1"
+    or "https://aistorehub-be-ubi9.onrender.com/api/v1"
 )
 CONFIG_DIR = Path.home() / ".aistorehub"
 LEGACY_CONFIG_DIR = Path.home() / ".sihub"
@@ -133,6 +133,7 @@ def get_config() -> Dict[str, Any]:
                 or "aistorehub-be-z2m1" in api_url
                 or "aistorehub-be-5dwr" in api_url
                 or "aistorehub-be-cgsu" in api_url
+                or "aistorehub-be-ya19" in api_url
             )
             if is_defunct:
                 data["api_url"] = DEFAULT_API_URL
