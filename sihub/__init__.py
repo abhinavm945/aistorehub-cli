@@ -1,4 +1,4 @@
 """
 sihub - The Official CLI for AIStoreHub
 """
-__version__ = "0.1.11"
+__version__ = "0.1.13"
