@@ -13,7 +13,7 @@ DEFAULT_API_URL = (
     os.environ.get("AISTOREHUB_API_URL")
     or os.environ.get("AIHUB_API_URL")
     or os.environ.get("SIHUB_API_URL")
-    or "https://aistorehub-be-ubi9.onrender.com/api/v1"
+    or "https://aistorehub-be-gea4.onrender.com/api/v1"
 )
 CONFIG_DIR = Path.home() / ".aistorehub"
 LEGACY_CONFIG_DIR = Path.home() / ".sihub"
