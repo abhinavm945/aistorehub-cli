@@ -22,7 +22,7 @@ from .packager import inspect_directory, create_bundle_zip
 
 
 @click.group()
-@click.version_option("0.1.13", prog_name="aistorehub")
+@click.version_option("0.1.14", prog_name="aistorehub")
 @click.option("--no-telemetry", is_flag=True, default=False, help="Disable anonymous usage telemetry for this command invocation")
 def cli(no_telemetry: bool = False):
     """
