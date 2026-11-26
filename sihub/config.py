@@ -134,6 +134,7 @@ def get_config() -> Dict[str, Any]:
                 or "aistorehub-be-5dwr" in api_url
                 or "aistorehub-be-cgsu" in api_url
                 or "aistorehub-be-ya19" in api_url
+                or "aistorehub-be-ubi9" in api_url
             )
             if is_defunct:
                 data["api_url"] = DEFAULT_API_URL
